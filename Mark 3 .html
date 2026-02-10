@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual Engine PDF Splitter</title>
+    <!-- LIBRARIES -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <style>
+        :root { --primary: #2563eb; --secondary: #475569; --bg: #f1f5f9; --card: #ffffff; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: #1e293b; max-width: 900px; margin: 0 auto; padding: 20px; }
+        
+        /* HEADER & TABS */
+        .header-area { text-align: center; margin-bottom: 20px; }
+        .tab-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+        .tab-btn {
+            padding: 12px 24px; font-size: 1.1rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; opacity: 0.7; transition: 0.2s;
+        }
+        .tab-btn:hover { opacity: 1; transform: translateY(-2px); }
+        .tab-btn.active { opacity: 1; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateY(-2px); }
+        
+        /* MARK 1 STYLE (Blue) */
+        .tab-mk1 { background: #3b82f6; color: white; }
+        .mk1-theme .step-num { background: #3b82f6; }
+        .mk1-theme .btn-action { background: #3b82f6; }
+
+        /* MARK 2 STYLE (Purple/Red) */
+        .tab-mk2 { background: #7c3aed; color: white; }
+        .mk2-theme .step-num { background: #7c3aed; }
+        .mk2-theme .btn-action { background: #7c3aed; }
+
+        /* CARD & CONTENT */
+        .engine-view { display: none; animation: fadeIn 0.3s ease-in-out; }
+        .engine-view.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card { background: var(--card); padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; }
+        
+        /* COMMON UI ELEMENTS */
+        .step-header { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.1em; margin-bottom: 10px; margin-top: 20px;}
+        .step-num { color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.9rem; }
+        
+        textarea { width: 100%; height: 180px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: 'Menlo', monospace; font-size: 13px; resize: vertical; margin-bottom: 10px; box-sizing: border-box; }
+        
+        button { cursor: pointer; padding: 10px 16px; border-radius: 6px; border: none; font-weight: 600; font-size: 0.9rem; margin-right: 5px; margin-bottom: 5px; color: white; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+        .btn-grey { background: #64748b; }
+        .btn-green { background: #16a34a; }
+        .btn-danger { background: #ef4444; padding: 4px 10px; font-size: 0.8em; }
+        .btn-action { width: 100%; padding: 15px; font-size: 1.1rem; margin-top: 10px;}
+
+        /* TABLE */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
+        th { text-align: left; padding: 8px; background: #f1f5f9; color: #64748b; }
+        td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
+
+        /* DEBUG CONSOLE (MK2 Only) */
+        .console-box { background: #1e1e1e; color: #00ff00; font-family: monospace; font-size: 11px; padding: 10px; border-radius: 6px; height: 100px; overflow-y: auto; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="header-area">
+        <h1>PDF Chapter Splitter</h1>
+        <div class="tab-container">
+            <button class="tab-btn tab-mk1 active" onclick="switchTab('mk1')">Mark 1 (Manual/Simple)</button>
+            <button class="tab-btn tab-mk2" onclick="switchTab('mk2')">Mark 2 (Auto/Repair)</button>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MARK 1 ENGINE (Simple / Manual)           -->
+    <!-- ========================================== -->
+    <div id="view-mk1" class="engine-view active mk1-theme">
+        <div class="card">
+            <h2>Mark 1: The Classic Splitter</h2>
+            <p style="color:#666; font-size: 0.9em;">Best for clean PDFs where you want to manually paste or type a list of chapters.</p>
+            
+            <div class="step-header"><span class="step-num">1</span> Upload PDF</div>
+            <input type="file" id="mk1-upload" accept=".pdf">
+            <div id="mk1-file-info" style="color:green; font-weight:bold; margin-top:5px;"></div>
+
+            <div class="step-header"><span class="step-num">2</span> Paste Chapter List</div>
+            <textarea id="mk1-input" placeholder="Paste list here...
+Example:
+Introduction ... 10
+Ch 1 Colonial Prologue (p. 26)"></textarea>
+            
+            <div>
+                <button class="btn-grey" onclick="mk1_performAICleanse()">✨ AI Clean Text</button>
+                <button class="btn-green" onclick="mk1_parseList()">Process List</button>
+                <button class="btn-grey" onclick="mk1_clear()">Clear</button>
+            </div>
+
+            <table id="mk1-table" style="display:none;">
+                <thead><tr><th>Start Page</th><th>Chapter Title</th><th></th></tr></thead>
+                <tbody id="mk1-tbody"></tbody>
+            </table>
+
+            <div class="step-header"><span class="step-num">3</span> Split & Download</div>
+            <button id="mk1-split-btn" class="btn-action" onclick="mk1_processPDF()" disabled>Generate Files</button>
+            
+            <div id="mk1-download-area" style="display:none; margin-top:20px;">
+                <input type="text" id="mk1-zip-name" style="width:100%; padding:8px; margin-bottom:10px;" placeholder="Filename.zip">
+                <button class="btn-green" style="width:100%" onclick="mk1_downloadZip()">Download ZIP</button>
+            </div>
+            <div id="mk1-status" style="margin-top:10px; color:#3b82f6; font-weight:bold;"></div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MARK 2 ENGINE (Advanced / Auto-Detect)    -->
+    <!-- ========================================== -->
+    <div id="view-mk2" class="engine-view mk2-theme">
+        <div class="card">
+            <h2>Mark 2: The Ultimate (v3.1)</h2>
+            <p style="color:#666; font-size: 0.9em;">Includes TOC Auto-Detection, Header Repair, and Stability Fixes for broken/academic PDFs.</p>
+            
+            <!-- Console -->
+            <div id="mk2-console" class="console-box"></div>
+
+            <div class="step-header"><span class="step-num">1</span> Upload PDF</div>
+            <input type="file" id="mk2-upload" accept=".pdf">
+            <div id="mk2-file-info" style="font-weight:bold; margin-top:5px;"></div>
+
+            <div class="step-header"><span class="step-num">2</span> Detect or Define</div>
+            <textarea id="mk2-input" placeholder="Click 'Auto-Detect' to fill this from the PDF..."></textarea>
+            
+            <div>
+                <button id="mk2-auto-btn" style="background:#f59e0b;" onclick="mk2_runAutoDetect()" disabled>⚡ Auto-Detect</button>
+                <button class="btn-grey" onclick="mk2_cleanText()">✨ Clean Text</button>
+                <button class="btn-green" onclick="mk2_parseChapters()">Process List</button>
+                <button class="btn-grey" onclick="mk2_clear()">Clear</button>
+            </div>
+
+            <table id="mk2-table" style="display:none;">
+                <thead><tr><th>Start Page</th><th>Title</th><th></th></tr></thead>
+                <tbody id="mk2-tbody"></tbody>
+            </table>
+
+            <div class="step-header"><span class="step-num">3</span> Split & Download</div>
+            <button id="mk2-split-btn" class="btn-action" onclick="mk2_splitPDF()" disabled>🚀 Split PDF Now</button>
+
+            <div id="mk2-download-area" style="display:none; margin-top:20px;">
+                <input type="text" id="mk2-zip-name" style="width:100%; padding:8px; margin-bottom:10px;" placeholder="Filename.zip">
+                <button class="btn-green" style="width:100%" onclick="mk2_downloadZip()">Download ZIP</button>
+            </div>
+            <div id="mk2-status" style="margin-top:10px; font-weight:bold;"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- GLOBAL SETUP ---
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // --- TAB SWITCHER ---
+        function switchTab(view) {
+            document.querySelectorAll('.engine-view').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById('view-' + view).classList.add('active');
+            document.querySelector('.tab-' + view).classList.add('active');
+        }
+
+        // ==========================================================
+        // MARK 1 LOGIC (Original, Manual Focused)
+        // ==========================================================
+        let mk1_chapters = [];
+        let mk1_pdfBytes = null;
+        let mk1_generatedFiles = [];
+
+        document.getElementById('mk1-upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    mk1_pdfBytes = new Uint8Array(evt.target.result);
+                    document.getElementById('mk1-file-info').innerText = "✓ Loaded: " + file.name;
+                    document.getElementById('mk1-zip-name').value = file.name.replace('.pdf', '_Split.zip');
+                    mk1_checkReady();
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        function mk1_performAICleanse() {
+            const textarea = document.getElementById('mk1-input');
+            const lines = textarea.value.split('\n');
+            let cleanedText = [];
+            // Simple logic from Mark 1
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
+                const numbers = line.match(/\d+/g);
+                let title = line.replace(/(\d+|page|p\.|book|pdf|->|→|—|-|:)/gi, ' ').replace(/\s+/g, ' ').trim();
+                if (numbers && numbers.length > 0) {
+                    let pdfPage = numbers[numbers.length - 1]; // Assumption: Last number is page
+                    cleanedText.push(`${title} ... ${pdfPage}`);
+                } else {
+                    cleanedText.push(line);
+                }
+            }
+            if (cleanedText.length > 0) textarea.value = cleanedText.join('\n');
+        }
+
+        function mk1_parseList() {
+            const raw = document.getElementById('mk1-input').value;
+            const lines = raw.split('\n');
+            let newChapters = [];
+            lines.forEach(line => {
+                const match = line.match(/^(.*?)[^0-9](\d+)$/) || line.match(/(.*?)(\d+)$/);
+                if (match) {
+                    let title = match[1].replace(/[.\-_]+$/, '').trim();
+                    let page = parseInt(match[2]);
+                    if (title && page) newChapters.push({ title, start: page });
+                }
+            });
+            // Sort and Dedup
+            newChapters.sort((a,b) => a.start - b.start);
+            mk1_chapters = newChapters.filter((item, index, self) => 
+                index === self.findIndex((t) => (t.start === item.start))
+            );
+            
+            mk1_renderTable();
+            mk1_checkReady();
+        }
+
+        function mk1_renderTable() {
+            const tbody = document.getElementById('mk1-tbody');
+            tbody.innerHTML = "";
+            mk1_chapters.forEach((ch, i) => {
+                tbody.innerHTML += `<tr><td>${ch.start}</td><td>${ch.title}</td><td><button class="btn-danger" onclick="mk1_remove(${i})">X</button></td></tr>`;
+            });
+            document.getElementById('mk1-table').style.display = mk1_chapters.length ? 'table' : 'none';
+        }
+
+        function mk1_remove(i) {
+            mk1_chapters.splice(i, 1);
+            mk1_renderTable();
+            mk1_checkReady();
+        }
+
+        function mk1_clear() {
+            mk1_chapters = [];
+            document.getElementById('mk1-input').value = "";
+            mk1_renderTable();
+            mk1_checkReady();
+        }
+
+        function mk1_checkReady() {
+            document.getElementById('mk1-split-btn').disabled = !(mk1_pdfBytes && mk1_chapters.length > 0);
+        }
+
+        async function mk1_processPDF() {
+            document.getElementById('mk1-status').innerText = "Processing...";
+            mk1_generatedFiles = [];
+            try {
+                const pdfDoc = await PDFLib.PDFDocument.load(mk1_pdfBytes);
+                const totalPages = pdfDoc.getPageCount();
+
+                for (let i = 0; i < mk1_chapters.length; i++) {
+                    const start = mk1_chapters[i].start - 1;
+                    let end = (i + 1 < mk1_chapters.length) ? mk1_chapters[i+1].start - 1 : totalPages;
+                    if (start >= totalPages || start >= end) continue;
+
+                    const newPdf = await PDFLib.PDFDocument.create();
+                    const indices = [];
+                    for(let p=start; p<end; p++) indices.push(p);
+                    const pages = await newPdf.copyPages(pdfDoc, indices);
+                    pages.forEach(p => newPdf.addPage(p));
+                    
+                    const bytes = await newPdf.save();
+                    const safeName = `${String(i+1).padStart(2,'0')}_${mk1_chapters[i].title.replace(/[^a-z0-9]/gi, '_').substring(0,30)}.pdf`;
+                    mk1_generatedFiles.push({ name: safeName, blob: new Blob([bytes], {type:'application/pdf'}) });
+                }
+                document.getElementById('mk1-download-area').style.display = 'block';
+                document.getElementById('mk1-status').innerText = "Done! Ready to download.";
+            } catch (err) {
+                document.getElementById('mk1-status').innerText = "Error: " + err.message;
+            }
+        }
+
+        async function mk1_downloadZip() {
+            const zip = new JSZip();
+            mk1_generatedFiles.forEach(f => zip.file(f.name, f.blob));
+            const content = await zip.generateAsync({type:"blob"});
+            let name = document.getElementById('mk1-zip-name').value || "Mark1_Files.zip";
+            if (!name.endsWith('.zip')) name += '.zip';
+            saveAs(content, name);
+        }
+
+        // ==========================================================
+        // MARK 2 LOGIC (Advanced / Auto / Repair)
+        // ==========================================================
+        let mk2_masterBytes = null;
+        let mk2_chapters = [];
+        let mk2_blobs = [];
+
+        function mk2_log(msg, type='info') {
+            const con = document.getElementById('mk2-console');
+            con.style.display = 'block';
+            const color = type === 'error' ? 'red' : (type === 'warn' ? 'orange' : '#00ff00');
+            con.innerHTML += `<div style="color:${color}; margin-bottom:2px;">> ${msg}</div>`;
+            con.scrollTop = con.scrollHeight;
+        }
+
+        document.getElementById('mk2-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('mk2-console').innerHTML = '';
+            document.getElementById('mk2-file-info').innerText = "Reading: " + file.name;
+            document.getElementById('mk2-zip-name').value = file.name.replace('.pdf', '_Mark2.zip');
+            
+            const buf = await file.arrayBuffer();
+            const raw = new Uint8Array(buf);
+            mk2_masterBytes = mk2_repairHeader(raw);
+            
+            document.getElementById('mk2-auto-btn').disabled = false;
+        });
+
+        function mk2_repairHeader(bytes) {
+            mk2_log("Scanning header...");
+            const limit = Math.min(bytes.length, 50000);
+            const sig = [0x25, 0x50, 0x44, 0x46, 0x2D]; // %PDF-
+            let found = -1;
+            for(let i=0; i<limit; i++) {
+                if(bytes[i]===sig[0] && bytes[i+1]===sig[1] && bytes[i+2]===sig[2] && bytes[i+3]===sig[3] && bytes[i+4]===sig[4]) {
+                    found = i; break;
+                }
+            }
+            if(found === -1) {
+                mk2_log("CRITICAL: No PDF header found. File may be broken.", 'error');
+                return bytes;
+            }
+            if(found > 0) {
+                mk2_log(`REPAIR: Slicing ${found} garbage bytes from start.`, 'warn');
+                return bytes.slice(found);
+            }
+            mk2_log("Header clean.");
+            return bytes;
+        }
+
+        async function mk2_runAutoDetect() {
+            const btn = document.getElementById('mk2-auto-btn');
+            btn.disabled = true;
+            btn.innerText = "Scanning...";
+            try {
+                mk2_log("Cloning buffer for analysis...");
+                const workerBytes = new Uint8Array(mk2_masterBytes); // Clone to prevent detachment
+                const loadingTask = pdfjsLib.getDocument(workerBytes);
+                const pdf = await loadingTask.promise;
+                mk2_log(`Pages: ${pdf.numPages}. Fetching Outline...`);
+                
+                const outline = await pdf.getOutline();
+                if(!outline) {
+                    mk2_log("No bookmarks found.", 'warn');
+                    alert("No bookmarks found.");
+                    btn.innerText = "No Bookmarks";
+                    return;
+                }
+                
+                let flat = [];
+                const recurse = async (items) => {
+                    for(const item of items) {
+                        try {
+                            let p = -1;
+                            if(item.dest) {
+                                let d = item.dest;
+                                if(typeof d === 'string') d = await pdf.getDestination(d);
+                                if(d) p = (await pdf.getPageIndex(d[0])) + 1;
+                            }
+                            if(p > 0) flat.push({title: item.title, page: p});
+                            if(item.items) await recurse(item.items);
+                        } catch(e) {}
+                    }
+                };
+                await recurse(outline);
+                
+                document.getElementById('mk2-input').value = flat.map(c => `${c.title} ... ${c.page}`).join('\n');
+                mk2_parseChapters();
+                mk2_log(`Imported ${flat.length} chapters.`);
+            } catch(e) {
+                mk2_log("Error: " + e.message, 'error');
+            } finally {
+                btn.innerText = "⚡ Auto-Detect";
+                btn.disabled = false;
+            }
+        }
+
+        function mk2_cleanText() {
+            // Same heuristic as Mk1 mostly
+            const txt = document.getElementById('mk2-input');
+            txt.value = txt.value.split('\n').map(l => {
+               const m = l.match(/(\d+)/g);
+               if(m) return `${l.replace(m[m.length-1], '').trim()} ... ${m[m.length-1]}`;
+               return l;
+            }).join('\n');
+        }
+
+        function mk2_parseChapters() {
+            const lines = document.getElementById('mk2-input').value.split('\n');
+            let parsed = [];
+            lines.forEach(l => {
+                const m = l.match(/^(.*?)[^0-9](\d+)$/);
+                if(m) parsed.push({title: m[1].replace(/[.\-_]+$/,'').trim(), start: parseInt(m[2])});
+            });
+            parsed.sort((a,b) => a.start - b.start);
+            mk2_chapters = parsed.filter((item, i, self) => i === self.findIndex(t => t.start === item.start));
+            
+            const tbody = document.getElementById('mk2-tbody');
+            tbody.innerHTML = "";
+            mk2_chapters.forEach((c,i) => {
+                tbody.innerHTML += `<tr><td>${c.start}</td><td>${c.title}</td><td><button class="btn-danger" onclick="mk2_rem(${i})">X</button></td></tr>`;
+            });
+            document.getElementById('mk2-table').style.display = mk2_chapters.length ? 'table' : 'none';
+            document.getElementById('mk2-split-btn').disabled = !mk2_chapters.length;
+        }
+
+        function mk2_rem(i) { mk2_chapters.splice(i,1); mk2_parseChapters(); }
+        function mk2_clear() { document.getElementById('mk2-input').value=''; mk2_parseChapters(); }
+
+        async function mk2_splitPDF() {
+            mk2_blobs = [];
+            const btn = document.getElementById('mk2-split-btn');
+            btn.innerText = "Working..."; btn.disabled = true;
+            try {
+                mk2_log("Loading splitter engine...");
+                const pdf = await PDFLib.PDFDocument.load(mk2_masterBytes);
+                const total = pdf.getPageCount();
+                
+                for(let i=0; i<mk2_chapters.length; i++) {
+                    const s = mk2_chapters[i].start - 1;
+                    const e = (i+1 < mk2_chapters.length) ? mk2_chapters[i+1].start - 1 : total;
+                    if(s >= total || s >= e) continue;
+                    
+                    const newDoc = await PDFLib.PDFDocument.create();
+                    let idxs = []; for(let p=s; p<e; p++) idxs.push(p);
+                    (await newDoc.copyPages(pdf, idxs)).forEach(p => newDoc.addPage(p));
+                    
+                    const b = await newDoc.save();
+                    const name = `${String(i+1).padStart(2,'0')}_${mk2_chapters[i].title.replace(/[^a-z0-9]/gi,'_').substring(0,40)}.pdf`;
+                    mk2_blobs.push({name: name, blob: new Blob([b], {type:'application/pdf'})});
+                }
+                document.getElementById('mk2-download-area').style.display='block';
+                mk2_log("Split complete!");
+            } catch(e) {
+                mk2_log("Error: "+e.message, 'error');
+            } finally {
+                btn.innerText = "🚀 Split PDF Now"; btn.disabled = false;
+            }
+        }
+
+        async function mk2_downloadZip() {
+            const z = new JSZip();
+            mk2_blobs.forEach(f => z.file(f.name, f.blob));
+            const c = await z.generateAsync({type:"blob"});
+            let n = document.getElementById('mk2-zip-name').value || "Mark2.zip";
+            if(!n.endsWith('.zip')) n+='.zip';
+            saveAs(c, n);
+        }
+
+    </script>
+</body>
+</html>
